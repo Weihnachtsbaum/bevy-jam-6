@@ -1,4 +1,6 @@
-use bevy::{input::common_conditions::input_just_pressed, prelude::*};
+use bevy::{
+    input::common_conditions::input_just_pressed, platform::collections::HashMap, prelude::*,
+};
 use rand::Rng;
 
 use crate::{PausableSystems, screens::Screen};
@@ -69,7 +71,7 @@ pub fn setup(
                 },
                 Mesh2d(mesh.clone()),
                 MeshMaterial2d(healthy_material.clone()),
-                Transform::from_xyz(x as f32 * 60.0, y as f32 * 60.0, 0.0),
+                Transform::from_translation(grid_to_world(IVec2::new(x, y)).extend(0.0)),
                 StateScoped(Screen::Gameplay),
             ));
         }
@@ -79,17 +81,55 @@ pub fn setup(
 fn advance_turn(
     mut turn: ResMut<Turn>,
     mut turn_text: Single<&mut Text, With<TurnText>>,
-    mut person_q: Query<(&mut Person, &mut MeshMaterial2d<ColorMaterial>)>,
+    mut person_q: Query<(&mut Person, &mut MeshMaterial2d<ColorMaterial>, &Transform)>,
     sick_material: Res<SickMaterial>,
 ) {
     turn.0 += 1;
     turn_text.0 = format!("Day {}", turn.0);
-    for (person, mut mesh_material) in &mut person_q {
+    let mut infect = HashMap::new();
+    for (person, mut mesh_material, transform) in &mut person_q {
         let Some(symptoms_turn) = person.symptoms_at_turn else {
             continue;
         };
         if turn.0 == symptoms_turn {
             mesh_material.0 = sick_material.0.clone();
         }
+        let pos = world_to_grid(transform.translation.xy());
+        if mesh_material.0 == sick_material.0 {
+            for y in -1..2 {
+                for x in -1..2 {
+                    if x == 0 && y == 0 {
+                        continue;
+                    }
+                    let pos = IVec2::new(pos.x + x, pos.y + y);
+                    if let Some(priority) = infect.get_mut(&pos) {
+                        *priority += 1;
+                    } else {
+                        infect.insert(pos, 1);
+                    }
+                }
+            }
+        }
     }
+    let mut rng = rand::thread_rng();
+    for (mut person, _, transform) in &mut person_q {
+        if person.symptoms_at_turn.is_some() {
+            continue;
+        };
+        let pos = world_to_grid(transform.translation.xy());
+        let Some(priority) = infect.get(&pos) else {
+            continue;
+        };
+        if rng.r#gen::<f32>() > 0.5f32.powi(*priority) {
+            person.symptoms_at_turn = Some(turn.0 + rng.gen_range(1..4));
+        }
+    }
+}
+
+fn grid_to_world(pos: IVec2) -> Vec2 {
+    Vec2::new(pos.x as f32 * 60.0, pos.y as f32 * 60.0)
+}
+
+fn world_to_grid(pos: Vec2) -> IVec2 {
+    IVec2::new((pos.x / 60.0) as i32, (pos.y / 60.0) as i32)
 }
