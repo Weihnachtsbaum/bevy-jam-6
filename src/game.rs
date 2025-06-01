@@ -17,6 +17,9 @@ pub fn plugin(app: &mut App) {
 struct Turn(u32);
 
 #[derive(Component)]
+struct TurnText;
+
+#[derive(Component)]
 struct Person {
     symptoms_at_turn: Option<u32>,
 }
@@ -30,6 +33,20 @@ pub fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
     commands.insert_resource(Turn(0));
+
+    commands.spawn((
+        TurnText,
+        Text::new("Day 0"),
+        TextFont {
+            font_size: 35.0,
+            ..default()
+        },
+        Node {
+            justify_self: JustifySelf::Center,
+            ..default()
+        },
+        StateScoped(Screen::Gameplay),
+    ));
 
     let mesh = meshes.add(Circle::new(20.0));
     let healthy_material = materials.add(Color::srgb(0.9, 0.9, 1.0));
@@ -61,10 +78,12 @@ pub fn setup(
 
 fn advance_turn(
     mut turn: ResMut<Turn>,
+    mut turn_text: Single<&mut Text, With<TurnText>>,
     mut person_q: Query<(&mut Person, &mut MeshMaterial2d<ColorMaterial>)>,
     sick_material: Res<SickMaterial>,
 ) {
     turn.0 += 1;
+    turn_text.0 = format!("Day {}", turn.0);
     for (person, mut mesh_material) in &mut person_q {
         let Some(symptoms_turn) = person.symptoms_at_turn else {
             continue;
